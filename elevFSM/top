@@ -1,0 +1,674 @@
+[33mcommit b68fa3f16d15f6bde4cb6f7131dbea4f2540102a[m
+Author: Erlend Jenssen <erlendoj@stud.ntnu.no>
+Date:   Tue Apr 5 22:53:37 2016 +0200
+
+    Tirsdags arbeid
+
+[1mdiff --git a/FSM.go b/FSM.go[m
+[1mnew file mode 100644[m
+[1mindex 0000000..f560bd6[m
+[1m--- /dev/null[m
+[1m+++ b/FSM.go[m
+[36m@@ -0,0 +1,205 @@[m
+[32m+[m[32mpackage main[m
+[32m+[m
+[32m+[m[32mimport ([m
+[32m+[m	[32m. "./elevDrivers"[m
+[32m+[m	[32m//."./elevOrders"[m
+[32m+[m	[32m"fmt"[m
+[32m+[m	[32m"time"[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m[32mconst ([m
+[32m+[m	[32mIDLE = 0[m
+[32m+[m	[32mDRIVING = 1[m
+[32m+[m	[32mDOOR_TIMER = 2[m
+[32m+[m
+[32m+[m	[32mNONE = 0[m
+[32m+[m	[32mFLOOR_ARRIVAL = 1[m
+[32m+[m	[32mNEW_ORDER = 2[m
+[32m+[m	[32mTIMER_TIMEOUT = 3[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m[32mtype Elevator struct {[m
+[32m+[m	[32mSTATE 				int[m
+[32m+[m	[32mCURRENT_FLOOR 		int[m
+[32m+[m	[32mDESTINATION_FLOOR	int[m
+[32m+[m	[32mDIRECTION 			int[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32mfunc main(){[m
+[32m+[m	[32m/* INITIALIZATION */[m
+[32m+[m	[32mElev_init()[m
+[32m+[m	[32mElev_set_motor_direction(DIRN_DOWN)[m
+[32m+[m	[32m/* DRIVES THE ELEVATOR TO THE FIRST FLOOR DOWNWARDS */[m
+[32m+[m	[32mfor{[m
+[32m+[m		[32mif (Elev_get_floor_sensor_signal() != -1){[m
+[32m+[m			[32mElev_set_motor_direction(DIRN_STOP)[m
+[32m+[m			[32mbreak[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m	[32m/* SETS INITIAL STATE VARIABLES */[m
+[32m+[m	[32mElevator := 				Elevator{IDLE, NONE, Elev_get_floor_sensor_signal(), DIRN_STOP}[m
+[32m+[m	[32mButton_Press_Chan :=		make(chan Button, 10)[m
+[32m+[m	[32mFloor_Arrival_Chan :=		make(chan int)[m
+[32m+[m	[32mMotor_Direction_Chan :=		make(chan int)[m
+[32m+[m	[32mDestination_Chan := 		make(chan int)[m
+[32m+[m	[32mState_Chan :=				make(chan int)[m
+[32m+[m	[32m//Door_Close_Chan :=		make(chan int)[m
+[32m+[m	[32m//Objective_Chan :=			make(chan Button)[m
+[32m+[m	[32m//Elevator_Stop_Chan:=		make(chan int)[m
+[32m+[m[41m	[m
+[32m+[m	[32m/* STARTS ESSENTIAL PROCESSES */[m
+[32m+[m	[32mgo Elev_sensor_pooler(Button_Press_Chan)[m
+[32m+[m	[32m//go FSM_floor_tracker(Elevator)[m
+[32m+[m	[32mgo Order_handler(Button_Press_Chan)[m
+[32m+[m	[32mgo FSM_objective_dealer(Elevator)[m
+[32m+[m	[32mgo FSM_elevator_updater(Elevator)[m
+[32m+[m	[32mgo Orders_init()[m
+[32m+[m
+[32m+[m	[32mtime.Sleep(time.Millisecond*200)[m
+[32m+[m
+[32m+[m	[32mfmt.Printf("\n\n\n####################################################\n")[m
+[32m+[m	[32mfmt.Printf("## The elevator has been succesfully initiated! #### \n")[m[41m [m
+[32m+[m	[32mfmt.Printf("####################################################\n\n")[m
+[32m+[m
+[32m+[m	[32mfmt.Printf("STATE: %d \n", Elevator.STATE)[m
+[32m+[m	[32mfmt.Printf("EVENT: %d \n", Elevator.EVENT)[m
+[32m+[m	[32mfmt.Printf("CURRENT_FLOOR: %d \n", Elevator.CURRENT_FLOOR)[m
+[32m+[m	[32mfmt.Printf("DIRECTION: %d \n\n\n", Elevator.DIRECTION)[m
+[32m+[m
+[32m+[m	[32mPrint_all_orders()[m[41m	[m
+[32m+[m[41m	[m
+[32m+[m[41m	[m
+[32m+[m	[32mfor{[m
+[32m+[m		[32mselect{[m
+[32m+[m		[32mcase NewObjective := <- Objective_Chan:[m
+[32m+[m			[32mFSM_Start_Driving(NewObjective, Elevator)[m
+[32m+[m		[32m/*[m
+[32m+[m		[32mcase Arrival := <- Floor_Arrival_Chan:[m
+[32m+[m			[32mFSM_Should_stop_or_not(Arrival)[m
+[32m+[m		[32mcase DoorClosed := <- Door_Close_Chan:[m
+[32m+[m			[32mFSM_Return_to_idle(Elevator)[m
+[32m+[m		[32m}[m
+[32m+[m		[32m*/[m
+[32m+[m	[32m}[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m	[32m/*[m
+[32m+[m		[32m//Print_all_orders()[m
+[32m+[m		[32mswitch(Elevator.STATE) {[m
+[32m+[m		[32mcase IDLE:[m
+[32m+[m			[32m//Sjekk etter ny event(nye ordre)[m
+[32m+[m			[32m//IF(ny event)[m
+[32m+[m				[32m//kjør i retning bestemt av event[m
+[32m+[m				[32m//state = driving[m
+[32m+[m			[32mElevator.STATE = DRIVING[m
+[32m+[m		[32mcase DRIVING:[m
+[32m+[m			[32m//Sjekk etter ny event(ankommer ny floor)[m
+[32m+[m			[32m//IF(floor = destination floor)[m
+[32m+[m				[32m//stop heisen[m
+[32m+[m				[32m//fix lys[m
+[32m+[m				[32m//start timer[m
+[32m+[m				[32m//state = door_timer[m
+[32m+[m			[32mElevator.STATE = DOOR_TIMER[m
+[32m+[m		[32mcase DOOR_TIMER:[m
+[32m+[m			[32m//Sjekker etter ny event(timer_timeout)[m
+[32m+[m			[32m//IF(timer_timeout)[m
+[32m+[m				[32m//lukk dør[m
+[32m+[m				[32m//fix kø[m
+[32m+[m				[32m//state = idle[m
+[32m+[m			[32mElevator.STATE = IDLE[m
+[32m+[m		[32m}[m[41m	[m
+[32m+[m	[32m}[m
+[32m+[m	[32m*/[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m[32m/*[m
+[32m+[m[32mtype struct ElevatorState {[m
+[32m+[m	[32mstate 		State[m
+[32m+[m	[32mfloor 		int[m
+[32m+[m	[32mdirn 		Dirn[m
+[32m+[m	[32morders 	    [][3]bool[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunc chooseDirection(e ElevatorState) bool {[m
+[32m+[m
+[32m+[m[32m}[m
+[32m+[m[32m*/[m
+[32m+[m
+[32m+[m[32m/*[m
+[32m+[m[32mfunc fsm(channels and stuff){[m
+[32m+[m
+[32m+[m	[32mvar e 							ElevatorState[m
+[32m+[m	[32mvar doorCloseCh 				<-chan time.Time[m
+[32m+[m	[32mvar failedToArriveAtFloorCh 	<-chan time.Time 	// start time.After each time we start moving (or don't stop at that floor)[m
+[32m+[m
+[32m+[m	[32mfunc newOrder(floor int, type int){[m
+[32m+[m		[32mswtich(e.state){[m
+[32m+[m		[32mcase Idle:[m[41m			[m
+[32m+[m			[32me.orders[o.floor][type] = true[m
+[32m+[m			[32me.dirn = chooseDirection(e)[m
+[32m+[m			[32mif(e.dirn == Stop){[m
+[32m+[m				[32me.state = DoorOpen[m
+[32m+[m				[32mdoorCloseCh = time.After(doorOpenDuration)[m
+[32m+[m					[32melel_set_door stuff[m
+[32m+[m				[32m} else {[m
+[32m+[m					[32mElev_set_motor_direction(e.dirn)[m
+[32m+[m					[32me.state = Moving[m
+[32m+[m				[32m}[m
+[32m+[m			[32m}[m
+[32m+[m		[32mcase Moving:[m
+[32m+[m			[32me.orders[o.floor][type] = true[m
+[32m+[m		[32mcase DoorOpen:[m
+[32m+[m			[32mif(e.floor == o.floor){[m
+[32m+[m				[32mdoorCloseCh = time.After(doorOpenDuration)[m
+[32m+[m			[32m} else {[m
+[32m+[m				[32me.orders[o.floor][type] = true[m
+[32m+[m			[32m}[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m
+[32m+[m	[32mfor {[m
+[32m+[m		[32mselect {[m
+[32m+[m		[32mcase o := <-cabOrderCh:[m
+[32m+[m			[32mnewOrder(o.floor, Cab)[m
+[32m+[m
+[32m+[m
+[32m+[m
+[32m+[m		[32mcase o := <-hallOrderCh:[m
+[32m+[m			[32mnewOrder(o.floor, o.type)[m
+[32m+[m
+[32m+[m		[32mcase f := <-Floor_Arrival_Chan:[m
+[32m+[m			[32mif should Stop[m
+[32m+[m				[32m//what do if hall order? send network stuff? channel?[m
+[32m+[m
+[32m+[m		[32mcase f := <-failedToArriveAtFloorCh:[m
+[32m+[m			[32m//tell network/stuff that we are "disconnected"[m
+[32m+[m
+[32m+[m		[32mcase d := <-doorCloseCh:[m
+[32m+[m		[32mcase getStateCh<-e:[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m[32m*/[m
+[32m+[m
+[1mdiff --git a/elevDrivers/FSM_Controller.go b/elevDrivers/FSM_Controller.go[m
+[1mnew file mode 100644[m
+[1mindex 0000000..c5d2cad[m
+[1m--- /dev/null[m
+[1m+++ b/elevDrivers/FSM_Controller.go[m
+[36m@@ -0,0 +1,52 @@[m
+[32m+[m[32mpackage elevDrivers[m
+[32m+[m
+[32m+[m
+[32m+[m[32mfunc FSM_Start_Driving(NewObjective Button, Elevator Elevator){[m
+[32m+[m	[32mif Elevator.CURRENT_FLOOR > NewObjective.Floor{[m
+[32m+[m		[32mElev_set_motor_direction(-1)[m
+[32m+[m		[32mMotor_Direction_Chan <- -1[m
+[32m+[m		[32mState_Chan <- DRIVING[m
+[32m+[m	[32m}[m
+[32m+[m	[32mif Elevator.CURRENT_FLOOR < NewObjective.Floor{[m
+[32m+[m		[32mElev_set_motor_direction(1)[m
+[32m+[m		[32mMotor_Direction_Chan <- 1[m
+[32m+[m		[32mState_Chan <- DRIVING[m
+[32m+[m	[32m}[m
+[32m+[m	[32mif Elevator.CURRENT_FLOOR == NewObjective.Floor{[m
+[32m+[m		[32mcontinue[m
+[32m+[m		[32m//Floor_Arrival_Chan <- Elevator.CURRENT_FLOOR[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunc FSM_objective_dealer(Elevator Elevator){[m
+[32m+[m	[32mfor{[m
+[32m+[m		[32mif elevator_state == IDLE{[m
+[32m+[m			[32mObjective_Chan <- Button{Floor: Orders[0][0], Button_type: Orders[0][1]}[m
+[32m+[m			[32mDestination_chan <- Orders[0][0][m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunc FSM_elevator_updater(Elevator Elevator) {[m
+[32m+[m	[32mfor{[m
+[32m+[m		[32mselect{[m
+[32m+[m			[32mcase NewDirection := <- Motor_Direction_Chan:[m
+[32m+[m				[32mElevator.DIRECTION = NewDirection[m
+[32m+[m			[32mcase NewFloor := <- Floor_Arrival_Chan:[m
+[32m+[m				[32mElevator.CURRENT_FLOOR = NewFloor[m
+[32m+[m			[32mcase NewDestination := <- Destination_Chan:[m
+[32m+[m				[32mElevator.DESTINATION_FLOOR = NewDestination[m
+[32m+[m			[32mcase NewState := <- State_Chan:[m
+[32m+[m				[32mElevator.STATE = NewState[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m[41m	[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunc FSM_floor_tracker(Elevator){[m
+[32m+[m	[32mfor{[m
+[32m+[m		[32mif Elev_get_floor_sensor_signal() != -1 && Elev_get_floor_sensor_signal() != Elevator.CURRENT_FLOOR{[m
+[32m+[m			[32mNewFloor := Elev_get_floor_sensor_signal()[m
+[32m+[m			[32mFloor_arrival_Chan <- NewFloor[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+\ No newline at end of file[m
+[1mdiff --git a/elevDrivers/elevDrivers.go b/elevDrivers/elevDrivers.go[m
+[1mnew file mode 100644[m
+[1mindex 0000000..ef98027[m
+[1m--- /dev/null[m
+[1m+++ b/elevDrivers/elevDrivers.go[m
+[36m@@ -0,0 +1,206 @@[m
+[32m+[m[32mpackage elevDrivers // where "driver" is the folder that contains io.go, io.c, io.h, channels.go, channels.h and driver.go[m
+[32m+[m[32m/*[m
+[32m+[m[32m#cgo CFLAGS: -std=c99[m
+[32m+[m[32m#cgo LDFLAGS: -lcomedi -lm[m
+[32m+[m[32m#include "io.h"[m
+[32m+[m[32m#include "elev.h"[m
+[32m+[m[32m*/[m
+[32m+[m[32mimport ([m
+[32m+[m		[32m"C"[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m[32mimport ("time"[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m[32mconst ([m
+[32m+[m	[32mB_UP = 0[m
+[32m+[m	[32mB_DOWN = 1[m
+[32m+[m	[32mB_COMMAND = 2[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m[32mtype Button struct{[m
+[32m+[m	[32mButton_type int[m
+[32m+[m	[32mFloor int[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunc Elev_init() {[m
+[32m+[m	[32mC.elev_init()[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m
+[32m+[m[32m/*void elev_init(void) {[m
+[32m+[m[32m    int init_success = io_init();[m
+[32m+[m[32m    assert(init_success && "Unable to initialize elevator hardware!");[m
+[32m+[m
+[32m+[m[32m    for (int f = 0; f < N_FLOORS; f++) {[m
+[32m+[m[32m        for (elev_button_type_t b = 0; b < N_BUTTONS; b++){[m
+[32m+[m[32m            elev_set_button_lamp(b, f, 0);[m
+[32m+[m[32m        }[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    elev_set_stop_lamp(0);[m
+[32m+[m[32m    elev_set_door_open_lamp(0);[m
+[32m+[m[32m    elev_set_floor_indicator(0);[m
+[32m+[m[32m}[m
+[32m+[m[32m*/[m
+[32m+[m
+[32m+[m[32mfunc Elev_sensor_pooler(Button_Press_Chan chan Button){[m
+[32m+[m	[32mfor{[m
+[32m+[m		[32mfor button := B_UP; button <= B_COMMAND; button++ {[m
+[32m+[m			[32mfor floor:= 0; floor < N_FLOORS; floor++{[m
+[32m+[m				[32mif button == B_UP && floor == N_FLOORS-1 { continue }[m
+[32m+[m				[32mif button == B_DOWN && floor == 0 { continue }[m
+[32m+[m				[32mbutton_signal := Elev_get_button_signal(button, floor);[m
+[32m+[m				[32mif button_signal == 1 {[m
+[32m+[m					[32mButton_Press_Chan <- Button{Button_type : button, Floor : floor}[m
+[32m+[m				[32m}[m
+[32m+[m			[32m}[m
+[32m+[m		[32m}[m
+[32m+[m		[32mtime.Sleep(time.Millisecond*100)[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunc Elev_floor_tracker(current_floor int){[m
+[32m+[m[32m    for{[m
+[32m+[m[32m        current_floor = Floor_Arrival_Chan[m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunc Elev_set_motor_direction(dirn int) {[m
+[32m+[m	[32mC.elev_set_motor_direction(C.elev_motor_direction_t(dirn))[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/*void elev_set_motor_direction(elev_motor_direction_t dirn) {[m
+[32m+[m[32m    if (dirn == 0){[m
+[32m+[m[32m        io_write_analog(MOTOR, 0);[m
+[32m+[m[32m    } else if (dirn > 0) {[m
+[32m+[m[32m        io_clear_bit(MOTORDIR);[m
+[32m+[m[32m        io_write_analog(MOTOR, MOTOR_SPEED);[m
+[32m+[m[32m    } else if (dirn < 0) {[m
+[32m+[m[32m        io_set_bit(MOTORDIR);[m
+[32m+[m[32m        io_write_analog(MOTOR, MOTOR_SPEED);[m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+[32m+[m[32m*/[m
+[32m+[m
+[32m+[m[32mfunc Elev_set_button_lamp(button int, floor int, value int) {[m
+[32m+[m	[32mC.elev_set_button_lamp(C.elev_button_type_t(button), C.int(floor), C.int(value))[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/*void elev_set_button_lamp(elev_button_type_t button, int floor, int value) {[m
+[32m+[m[32m    assert(floor >= 0);[m
+[32m+[m[32m    assert(floor < N_FLOORS);[m
+[32m+[m[32m    assert(button >= 0);[m
+[32m+[m[32m    assert(button < N_BUTTONS);[m
+[32m+[m
+[32m+[m[32m    if (value) {[m
+[32m+[m[32m        io_set_bit(lamp_channel_matrix[floor][button]);[m
+[32m+[m[32m    } else {[m
+[32m+[m[32m        io_clear_bit(lamp_channel_matrix[floor][button]);[m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+[32m+[m[32m*/[m
+[32m+[m
+[32m+[m[32mfunc Elev_set_floor_indicator(floor int) {[m
+[32m+[m	[32mC.elev_set_floor_indicator(C.int(floor))[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/*void elev_set_floor_indicator(int floor) {[m
+[32m+[m[32m    assert(floor >= 0);[m
+[32m+[m[32m    assert(floor < N_FLOORS);[m
+[32m+[m
+[32m+[m[32m    // Binary encoding. One light must always be on.[m
+[32m+[m[32m    if (floor & 0x02) {[m
+[32m+[m[32m        io_set_bit(LIGHT_FLOOR_IND1);[m
+[32m+[m[32m    } else {[m
+[32m+[m[32m        io_clear_bit(LIGHT_FLOOR_IND1);[m
+[32m+[m[32m    }[m
+[32m+[m
+[32m+[m[32m    if (floor & 0x01) {[m
+[32m+[m[32m        io_set_bit(LIGHT_FLOOR_IND2);[m
+[32m+[m[32m    } else {[m
+[32m+[m[32m        io_clear_bit(LIGHT_FLOOR_IND2);[m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+[32m+[m[32m*/[m
+[32m+[m
+[32m+[m[32mfunc Elev_set_door_open_lamp(value int) {[m
+[32m+[m	[32mC.elev_set_door_open_lamp(C.int(value))[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/*void elev_set_door_open_lamp(int value) {[m
+[32m+[m[32m    if (value) {[m
+[32m+[m[32m        io_set_bit(LIGHT_DOOR_OPEN);[m
+[32m+[m[32m    } else {[m
+[32m+[m[32m        io_clear_bit(LIGHT_DOOR_OPEN);[m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+[32m+[m[32m*/[m
+[32m+[m
+[32m+[m[32mfunc Elev_set_stop_lamp(value int) {[m
+[32m+[m	[32mC.elev_set_stop_lamp(C.int(value))[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/*void elev_set_stop_lamp(int value) {[m
+[32m+[m[32m    if (value) {[m
+[32m+[m[32m        io_set_bit(LIGHT_STOP);[m
+[32m+[m[32m    } else {[m
+[32m+[m[32m        io_clear_bit(LIGHT_STOP);[m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+[32m+[m[32m*/[m
+[32m+[m
+[32m+[m[32mfunc Elev_get_button_signal(button int, floor int) int {[m
+[32m+[m	[32mreturn int(C.elev_get_button_signal(C.elev_button_type_t(button), C.int(floor)))[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/*int elev_get_button_signal(elev_button_type_t button, int floor) {[m
+[32m+[m[32m    assert(floor >= 0);[m
+[32m+[m[32m    assert(floor < N_FLOORS);[m
+[32m+[m[32m    assert(button >= 0);[m
+[32m+[m[32m    assert(button < N_BUTTONS);[m
+[32m+[m
+[32m+[m
+[32m+[m[32m    if (io_read_bit(button_channel_matrix[floor][button])) {[m
+[32m+[m[32m        return 1;[m
+[32m+[m[32m    } else {[m
+[32m+[m[32m        return 0;[m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+[32m+[m[32m*/[m
+[32m+[m
+[32m+[m[32mfunc Elev_get_floor_sensor_signal() int {[m
+[32m+[m	[32mreturn int(C.elev_get_floor_sensor_signal())[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m/*[m
+[32m+[m[32mint elev_get_floor_sensor_signal(void) {[m
+[32m+[m[32m    if (io_read_bit(SENSOR_FLOOR1)) {[m
+[32m+[m[32m        return 0;[m
+[32m+[m[32m    } else if (io_read_bit(SENSOR_FLOOR2)) {[m
+[32m+[m[32m        return 1;[m
+[32m+[m[32m    } else if (io_read_bit(SENSOR_FLOOR3)) {[m
+[32m+[m[32m        return 2;[m
+[32m+[m[32m    } else if (io_read_bit(SENSOR_FLOOR4)) {[m
+[32m+[m[32m        return 3;[m
+[32m+[m[32m    } else {[m
+[32m+[m[32m        return -1;[m
+[32m+[m[32m    }[m
+[32m+[m[32m}[m
+[32m+[m[32m*/[m
+[32m+[m
+[32m+[m[32mfunc Elev_get_stop_signal() int {[m
+[32m+[m	[32mreturn int(C.elev_get_stop_signal())[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m//int elev_get_stop_signal(void) {[m
+[32m+[m[32m//    return io_read_bit(STOP);[m
+[32m+[m[32m//}[m
+[32m+[m
+[32m+[m[32mfunc Elev_get_obstruction_signal() int {[m
+[32m+[m	[32mreturn int(C.elev_get_obstruction_signal())[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32m//int elev_get_obstruction_signal(void) {[m
+[32m+[m[32m//    return io_read_bit(OBSTRUCTION);[m
+[32m+[m[32m//}[m
+[1mdiff --git a/elevDrivers/elevOrders.go b/elevDrivers/elevOrders.go[m
+[1mnew file mode 100644[m
+[1mindex 0000000..ebe2150[m
+[1m--- /dev/null[m
+[1m+++ b/elevDrivers/elevOrders.go[m
+[36m@@ -0,0 +1,146 @@[m
+[32m+[m[32mpackage elevDrivers[m
+[32m+[m
+[32m+[m[32mimport ([m
+[32m+[m	[32m"fmt"[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m[32m/*[m
+[32m+[m	[32mThe matrix(10x2) for the orders of a elevator are on the form[m
+[32m+[m
+[32m+[m			[32m2[m[41m	[m
+[32m+[m[41m			[m
+[32m+[m	[32m[FLOOR][BUTTON_TYPE][m
+[32m+[m	[32m[FLOOR][BUTTON_TYPE][m
+[32m+[m	[32m[FLOOR][BUTTON_TYPE][m
+[32m+[m	[32m.						}10[m
+[32m+[m	[32m.[m
+[32m+[m	[32m.[m
+[32m+[m	[32m[FLOOR][BUTTON_TYPE][m
+[32m+[m
+[32m+[m	[32mWhich is a priority list starting at the top. COMMAND button types have higher priorities than[m
+[32m+[m	[32mother button types and are automatically moved infront.[m
+[32m+[m
+[32m+[m	[32mThere is four floors: 0, 1, 2, and 3.[m
+[32m+[m	[32mThere is three button types: up, down and command.[m
+[32m+[m[32m*/[m
+[32m+[m
+[32m+[m[32mconst ([m
+[32m+[m	[32mROWS = 10[m
+[32m+[m	[32mCOLS = 2[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m[32mconst ([m
+[32m+[m	[32mb_UP = 0[m
+[32m+[m	[32mb_DOWN = 1[m
+[32m+[m	[32mb_COMMAND = 2[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mvar orders[ROWS][COLS] int[m
+[32m+[m
+[32m+[m[32mfunc add_order(button Button){[m
+[32m+[m	[32morder_exists := check_if_order_exists(button)[m
+[32m+[m	[32mif order_exists!=1{[m
+[32m+[m		[32mfor i := 0; i < ROWS; i++{[m
+[32m+[m			[32mif orders[i][0] == -1{[m
+[32m+[m				[32morders[i][0] = button.Floor[m
+[32m+[m				[32morders[i][1] = button.Button_type[m
+[32m+[m				[32mElev_set_button_lamp(button.Button_type, button.Floor, 1)[m
+[32m+[m				[32mif orders[i][1] == b_COMMAND{[m
+[32m+[m					[32mmove_order_infront(i)[m
+[32m+[m				[32m}[m
+[32m+[m				[32mreturn[m
+[32m+[m			[32m}[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m	[32mPrint_all_orders()[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunc check_if_order_exists(button Button) int{[m
+[32m+[m	[32mexists := 0[m
+[32m+[m	[32mfor i := 0; i < ROWS; i++{[m
+[32m+[m		[32mif orders[i][0] == button.Floor && orders[i][1] == button.Button_type{[m
+[32m+[m			[32mexists = 1[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m	[32mreturn exists[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunc remove_order(current_floor int){[m
+[32m+[m	[32mfor i := 0; i < ROWS; i++{[m
+[32m+[m		[32mif orders[i][0] == current_floor{[m
+[32m+[m			[32morders[i][0] = -1[m
+[32m+[m			[32morders[i][1] = -1[m
+[32m+[m			[32mleft_shift_orders(i)[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunc left_shift_orders(index int){[m
+[32m+[m	[32mfor i := index; i < ROWS-1; i++{[m
+[32m+[m		[32morders[i][0] = orders[i+1][0][m
+[32m+[m		[32morders[i][1] = orders[i+1][1][m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunc right_shift_orders(index int){[m
+[32m+[m	[32mfor i := index; i > 0; i--{[m
+[32m+[m		[32morders[i][0] = orders[i-1][0][m
+[32m+[m		[32morders[i][1] = orders[i-1][1][m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunc move_order_infront(index int){[m
+[32m+[m	[32mtemp_floor := orders[index][0][m
+[32m+[m	[32mtemp_button_type := orders[index][1][m
+[32m+[m	[32morders[index][0] = -1[m
+[32m+[m	[32morders[index][1] = -1[m
+[32m+[m	[32mright_shift_orders(index)[m
+[32m+[m	[32morders[0][0] = temp_floor[m
+[32m+[m	[32morders[0][1] = temp_button_type[m
+[32m+[m[32m}[m
+[32m+[m[41m	[m
+[32m+[m
+[32m+[m[32mfunc Order_handler(Button_Press_Chan chan Button){[m
+[32m+[m	[32madd_order(<-Button_Press_Chan)[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunc Print_all_orders(){[m
+[32m+[m	[32mfor i := 0; i < ROWS;i++{[m
+[32m+[m		[32mfor j := 0; j < COLS;j++{[m
+[32m+[m			[32mfmt.Printf("a[%d][%d] = %d\n",i,j, orders[i][j])[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m	[32mfmt.Printf("\n\n\n\n\n\n")[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mfunc Orders_init() {[m
+[32m+[m	[32mfor i := 0; i < ROWS;i++{[m
+[32m+[m		[32mfor j := 0; j < COLS;j++{[m
+[32m+[m			[32morders[i][j] = -1[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m
+[32m+[m	[32m/*[m
+[32m+[m
+[32m+[m	[32madd_order(1,1)[m
+[32m+[m	[32madd_order(2,1)[m
+[32m+[m	[32madd_order(3,1)[m
+[32m+[m	[32madd_order(4,1)[m
+[32m+[m	[32madd_order(2,1)[m
+[32m+[m	[32madd_order(4,1)[m
+[32m+[m	[32mfor i := 0; i < ROWS;i++{[m
+[32m+[m		[32mfor j := 0; j < COLS;j++{[m
+[32m+[m			[32mfmt.Printf("a[%d][%d] = %d\n",i,j, orders[i][j])[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m	[32mfmt.Printf("\n\n\n")[m
+[32m+[m	[32mremove_order(4)[m
+[32m+[m	[32mfor i := 0; i < ROWS;i++{[m
+[32m+[m		[32mfor j := 0; j < COLS;j++{[m
+[32m+[m			[32mfmt.Printf("a[%d][%d] = %d\n",i,j, orders[i][j])[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m	[32m*/[m
+[1mdiff --git a/main.go b/main.go[m
+[1mnew file mode 100644[m
+[1mindex 0000000..f8cc619[m
+[1m--- /dev/null[m
+[1m+++ b/main.go[m
+[36m@@ -0,0 +1,28 @@[m
+[32m+[m[32mpackage main[m
+[32m+[m
+[32m+[m[32mimport ([m
+[32m+[m	[32m. "./elevDrivers"[m
+[32m+[m	[32m"fmt"[m
+[32m+[m	[32m"elevFSM"[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m[32mfunc main() {[m
+[32m+[m	[32mElev_init()[m
+[32m+[m	[32mfmt.Println("Press STOP button to stop elevator and exit program.\n")[m
+[32m+[m	[32mElev_set_motor_direction(1)[m
+[32m+[m	[32mtall := 10[m
+[32m+[m	[32mStupidshit(tall)[m
+[32m+[m	[32mfmt.Printf("tall:%d",tall)[m
+[32m+[m
+[32m+[m	[32mfor {[m
+[32m+[m		[32mif Elev_get_floor_sensor_signal() == N_FLOORS-1 {[m
+[32m+[m			[32mElev_set_motor_direction(DIRN_DOWN)[m
+[32m+[m		[32m} else if Elev_get_floor_sensor_signal() == 0 {[m
+[32m+[m			[32mElev_set_motor_direction(DIRN_UP)[m
+[32m+[m		[32m}[m
+[32m+[m
+[32m+[m		[32mif Elev_get_stop_signal() == 1 {[m
+[32m+[m			[32mElev_set_motor_direction(DIRN_STOP)[m
+[32m+[m		[32m}[m
+[32m+[m	[32m}[m
+[32m+[m[32m}[m

@@ -1,0 +1,68 @@
+package elevDrivers
+
+const (
+	IDLE = 0
+	DRIVING = 1
+	DOOR_TIMER = 2
+
+	NONE = 0
+	FLOOR_ARRIVAL = 1
+	NEW_ORDER = 2
+	TIMER_TIMEOUT = 3
+)
+
+
+func FSM_create_elevator(State int, Current_floor int, Destination_floor int, Direction int) Elevator{
+	Elevator := Elevator{IDLE, NONE, Elev_get_floor_sensor_signal(), DIRN_STOP}
+	return Elevator
+}
+
+func FSM_Start_Driving(NewObjective Button, Elevator Elevator, Destination_Chan chan int, State_Chan chan int, Motor_Direction_Chan chan int, Floor_Arrival_Chan chan int){
+	Destination_Chan <- NewObjective.Floor
+	if Elevator.CURRENT_FLOOR > NewObjective.Floor{
+		Elev_set_motor_direction(-1)
+		Motor_Direction_Chan <- -1
+		State_Chan <- DRIVING
+	}
+	if Elevator.CURRENT_FLOOR < NewObjective.Floor{
+		Elev_set_motor_direction(1)
+		Motor_Direction_Chan <- 1
+		State_Chan <- DRIVING
+	}
+	if Elevator.CURRENT_FLOOR == NewObjective.Floor{
+		Floor_Arrival_Chan <- Elevator.CURRENT_FLOOR
+	}
+}
+
+func FSM_objective_dealer(Elevator Elevator, Destination_Chan chan int, Objective_Chan chan Button){
+	for{
+		if Elevator.STATE == IDLE{
+			nextOrder := next_order()
+			Objective_Chan <- nextOrder
+		}
+	}
+}
+
+func FSM_elevator_updater(Elevator Elevator, Motor_Direction_Chan chan int, Floor_Arrival_Chan chan int, Destination_Chan chan int, State_Chan chan int) {
+	for{
+		select{
+			case NewDirection := <- 						Motor_Direction_Chan:
+				Elevator.DIRECTION = NewDirection
+			case NewFloor := <- 							Floor_Arrival_Chan:
+				Elevator.CURRENT_FLOOR = NewFloor
+			case NewDestination := <- 						Destination_Chan:
+				Elevator.DESTINATION_FLOOR = NewDestination
+			case NewState := <- 							State_Chan:
+				Elevator.STATE = NewState
+		}
+	}	
+}
+
+func FSM_floor_tracker(Elevator Elevator, Floor_Arrival_Chan chan int){
+	for{
+		if Elev_get_floor_sensor_signal() != -1 && Elev_get_floor_sensor_signal() != Elevator.CURRENT_FLOOR{
+			NewFloor := Elev_get_floor_sensor_signal()
+			Floor_Arrival_Chan <- NewFloor
+		}
+	}
+}
