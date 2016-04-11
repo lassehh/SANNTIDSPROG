@@ -12,6 +12,7 @@ func main() {
 
 	/* SETS INITIAL STATE VARIABLES */
 	e := 							FSM_create_elevator()
+	e_manager:=						Initalize_elev()
 
 	/* CHANNELS FOR UPDATING THE ELEVATOR VARIABLES */
 	Button_Press_Chan := 			make(chan Button, 10)
@@ -25,6 +26,12 @@ func main() {
 	Floor_Arrival_Chan := 			make(chan int, 1)
 	Door_Open_Req_Chan := 			make(chan int, 1)
 
+
+	/* MESSAGE CHANNELS */
+	Rchv_message_Chan := make(chan Message)
+	Broadcast_message_Chan:= make(chan Message)
+
+
 	/* STARTS ESSENTIAL PROCESSES */
 	Orders_init()
 	go Order_handler(Button_Press_Chan)
@@ -34,6 +41,9 @@ func main() {
 	go FSM_objective_dealer(&e, State_Chan, Destination_Chan, Objective_Chan)
 	go FSM_elevator_updater(&e, Motor_Direction_Chan, Location_Chan, Destination_Chan, State_Chan)
 	time.Sleep(time.Millisecond * 200)
+
+	go MessageSetter(Broadcast_message_Chan,e_manager,e)
+
 
 	/* STARTUP TEXT */
 	fmt.Printf("\n\n\n####################################################\n")
