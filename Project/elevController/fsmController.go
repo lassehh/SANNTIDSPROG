@@ -20,6 +20,7 @@ type Elevator struct {
 	CURRENT_FLOOR     int
 	DESTINATION_FLOOR int
 	DIRECTION         int
+	INTERNAL_ORDERS   [ROWS]Button
 }
 
 func FSM_setup_elevator() {
@@ -73,7 +74,7 @@ func FSM_objective_dealer(e *Elevator, State_Chan chan int, Destination_Chan cha
 }
 
 func FSM_elevator_updater(e *Elevator, Motor_Direction_Chan chan int, Location_Chan chan int, Destination_Chan chan int, State_Chan chan int) {
-	for{
+	for {
 		select {
 		case NewDirection := <-Motor_Direction_Chan:
 			e.DIRECTION = NewDirection

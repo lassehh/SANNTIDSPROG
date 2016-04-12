@@ -11,39 +11,43 @@ func main() {
 	FSM_setup_elevator()
 
 	/* SETS INITIAL STATE VARIABLES */
-	e := 							FSM_create_elevator()
-	e_manager:=						Initalize_elev()
+	Orders_init()
+	e := FSM_create_elevator()
+	e_report := Initalize_elev()
 
 	/* CHANNELS FOR UPDATING THE ELEVATOR VARIABLES */
-	Button_Press_Chan := 			make(chan Button, 10)
-	Location_Chan := 				make(chan int, 1)
-	Motor_Direction_Chan := 		make(chan int, 1)
-	Destination_Chan := 			make(chan int, 1)
-	State_Chan := 					make(chan int, 1)
+	Button_Press_Chan := make(chan Button, 10)
+	Location_Chan := make(chan int, 1)
+	Motor_Direction_Chan := make(chan int, 1)
+	Destination_Chan := make(chan int, 1)
+	State_Chan := make(chan int, 1)
 
 	/* EVENT CHANNELS */
-	Objective_Chan := 				make(chan Button, 1)
-	Floor_Arrival_Chan := 			make(chan int, 1)
-	Door_Open_Req_Chan := 			make(chan int, 1)
-
+	Objective_Chan := make(chan Button, 1)
+	Floor_Arrival_Chan := make(chan int, 1)
+	Door_Open_Req_Chan := make(chan int, 1)
 
 	/* MESSAGE CHANNELS */
 	Rchv_message_Chan := make(chan Message)
-	Broadcast_message_Chan:= make(chan Message)
-
+	Broadcast_message_Chan := make(chan Message)
+	From_master_Chan := make(chan bool)
+	To_Master_Chan := make(chan Message)
 
 	/* STARTS ESSENTIAL PROCESSES */
-	Orders_init()
 	go Order_handler(Button_Press_Chan)
+	go Get_internal_orders(&e)
 	go FSM_safekill()
 	go FSM_sensor_pooler(Button_Press_Chan)
 	go FSM_floor_tracker(&e, Location_Chan, Floor_Arrival_Chan)
 	go FSM_objective_dealer(&e, State_Chan, Destination_Chan, Objective_Chan)
 	go FSM_elevator_updater(&e, Motor_Direction_Chan, Location_Chan, Destination_Chan, State_Chan)
+
+	/* STARTS THE NETWORK BETWEEN THE ELEVATORS AND THE MESSAGE-PASSING */
+	go MessageSetter(Broadcast_message_Chan, &e_report, &e)
+	go UDPSend(PORT, Broadcast_message_Chan, From_master_Chan)
+	go UDPListen(Is_elev_master(), PORT, Get_Master_IP(), Rchv_message_Chan, From_master_Chan)
+
 	time.Sleep(time.Millisecond * 200)
-
-	go MessageSetter(Broadcast_message_Chan,e_manager,e)
-
 
 	/* STARTUP TEXT */
 	fmt.Printf("\n\n\n####################################################\n")
@@ -58,14 +62,15 @@ func main() {
 
 	for {
 		select {
-		case newObjective := 		<-Objective_Chan:
+		case newObjective := <-Objective_Chan:
 			FSM_Start_Driving(newObjective, &e, State_Chan, Motor_Direction_Chan, Location_Chan)
-		
-		case newFloorArrival := 	<-Floor_Arrival_Chan:
+
+		case newFloorArrival := <-Floor_Arrival_Chan:
 			FSM_should_stop_or_not(newFloorArrival, &e, State_Chan, Motor_Direction_Chan, Door_Open_Req_Chan)
-		
-		case doorReq := 			<-Door_Open_Req_Chan:
+
+		case doorReq := <-Door_Open_Req_Chan:
 			FSM_door_opener(doorReq, &e, State_Chan)
+
 		}
 	}
 }

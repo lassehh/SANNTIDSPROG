@@ -31,7 +31,7 @@ func CheckError(err error) {
 }
 
 
-func UDPListen(isMaster bool, listenPort int, masterIP string) {
+func UDPListen(isMaster bool, listenPort int, masterIP string, rchvChan chan Message, From_master_Chan chan bool) {
 
 	/* For testing: sett addresse lik ip#255:30000*/
 	//ServerAddr, err := net.ResolveUDPAddr("udp", ":40000")
@@ -42,34 +42,38 @@ func UDPListen(isMaster bool, listenPort int, masterIP string) {
 	ServerConn, err := net.ListenUDP("udp", ServerAddr)
 	CheckError(err)
 	defer ServerConn.Close()
+	
+
 	var received_message Message 
 
-	var storageChannel := make(chan Message)
+	//var storageChannel := make(chan Message)
 
 	buffer := make([]byte, 1024)
 	trimmed_buffer:= make([]byte, 1)
 		if (isMaster){
 			for {
-				n, addr, err := ServerConn.ReadFromUDP(buffer)
-					trimmed_buffer=buffer[0:n]
+					n, addr, err := ServerConn.ReadFromUDP(buffer)
+					trimmed_buffer=buffer[0:n]	
 					fmt.Println("Received ", string(buffer[0:n]), " from ", addr)
 					CheckError(err)
 					err= json.Unmarshal(trimmed_buffer,&received_message)
 					CheckError(err)
-					storageChannel <- received_message
+					//storageChannel <- received_message
+					rchvChan<- received_message
 					time.Sleep(time.Second * 1)
 			}
 		}else{
 			for {
 				n, addr, err := ServerConn.ReadFromUDP(buffer)
 				if (addr.String()==masterIP){
-					trimmed_buffer=buffer[0:n]
+					From_master_Chan <-1	
+					trimmed_buffer=buffer[0:n]json
 					fmt.Println("Received ", string(buffer[0:n]), " from ", addr)
 					CheckError(err)
 					err= json.Unmarshal(trimmed_buffer,&received_message)
 					CheckError(err)
-					storageChannel <- received_message
-					fmt.Println(storageChannel)
+					//storageChannel <- received_message
+					rchvChan<-received_message
 					time.Sleep(time.Second * 1)
 				}
 			
@@ -82,11 +86,11 @@ func UDPListen(isMaster bool, listenPort int, masterIP string) {
  
 //need to include message-sending
 //func UDPSend(isMaster bool,transmitPort int,masterIP string,broadcastMessage chan Message) {
-func UDPSend(transmitPort int,broadcastMessage chan Message) {
+func UDPSend(transmitPort int,broadcastMessage chan Message, From_master_Chan chan bool) {
 	/* Dial up UDP */
-for{
-
-		if (broadcastMessage.Master){
+	var msg <- broadcastMessage
+	for{
+		if (msg.Master){
 			BroadcastAddr, err := net.ResolveUDPAddr("udp", "255.255.255.255:"+strconv.Itoa(transmitPort))
 			CheckError(err)
 			/* Make a connection to the server */
@@ -95,27 +99,29 @@ for{
 			fmt.Println("This is the master")
 			defer Conn.Close()
 
-			broadcastMessage.Timestamp = broadcastMessage.Timestamp+1
-			buf,err := json.Marshal(broadcastMessage)
+			msg.Timestamp = msg.Timestamp+1
+			buf,err := json.Marshal(msg)
 			CheckError(err)
 			Conn.Write(buf)
 
 			time.Sleep(time.Second * 5)
+
 		}else{
-			MasterAddr, err := net.ResolveUDPAddr("udp", broadcastMessage.MasterIP+"+"strconv.Itoa(transmitPort))
-			CheckError(err)
-			/* Make a connection to the server */
-			Conn, err := net.DialUDP("udp", nil, MasterAddr)
-			CheckError(err)
-			fmt.Println("This is a slave")
-			defer Conn.Close()
-
-			broadcastMessage.Timestamp = broadcastMessage.Timestamp+1
-			buf,err := json.Marshal(broadcastMessage)
-			CheckError(err)
-			Conn.Write(buf)
-
-			time.Sleep(time.Second * 5)
+			msg_from_master <=From_master_Chan
+			if msg_from_master{
+				MasterAddr, err := net.ResolveUDPAddr("udp", msg.MasterIP+"+"strconv.Itoa(transmitPort))
+				CheckError(err)
+				/* Make a connection to the server */
+				Conn, err := net.DialUDP("udp", nil, MasterAddr)
+				CheckError(err)
+				fmt.Println("This is a slave")
+				defer Conn.Close()
+				msg.Timestamp = msg.Timestamp+1
+				buf,err := json.Marshal(msg)
+				CheckError(err)
+				Conn.Write(buf)
+			}
+			
 		}
 		
 	}
@@ -131,10 +137,12 @@ func Message_reader(storage_channel chan Message){
 
 
 
-func UDP_initialize(isMaster bool, port int,masterIP string,broadcastMessage chan Message) {
+/*func UDP_initialize(isMaster bool, port int,masterIP string,broadcastMessage chan Message) {
 	runtime.GOMAXPROCS(runtime.NumCPU())
-
-	go UDPListen(isMaster,port,masterIP)
-	go UDPSend(isMaster,port,masterIP, broadcastMessage)
-	time.Sleep(time.Second * 30)
-}
+	for {
+		go UDPListen(isMaster,port,masterIP)
+		go UDPSend(isMaster,port,masterIP, broadcastMessage)
+		
+	}
+	
+}*/

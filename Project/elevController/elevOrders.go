@@ -1,15 +1,16 @@
 package elevController
 
 import (
+	. "./elevDrivers"
 	"fmt"
-	."./elevDrivers"
+	"time"
 )
 
 /*
 	The matrix(10x2) for the orders of a elevator are on the form
 
-			2	
-			
+			2
+
 	[FLOOR][BUTTON_TYPE]
 	[FLOOR][BUTTON_TYPE]
 	[FLOOR][BUTTON_TYPE]
@@ -30,34 +31,41 @@ const (
 )
 
 const (
-	b_UP = 0
-	b_DOWN = 1
+	b_UP      = 0
+	b_DOWN    = 1
 	b_COMMAND = 2
 )
 
-type Button struct{
+type Button struct {
 	Button_type int
-	Floor int
+	Floor       int
 }
 
-var orders[ROWS] Button
+var orders [ROWS]Button
 
-func Next_order() Button{
+func Next_order() Button {
 	return orders[0]
 }
 
-func Add_order(button Button){
+func Get_internal_orders(e *Elevator) {
+	for {
+		e.INTERNAL_ORDERS = orders
+		time.Sleep(time.Millisecond * 5)
+	}
+}
+
+func Add_order(button Button) {
 	order_exists := Check_if_order_exists(button)
-	if order_exists==0{
-		for i := 0; i < ROWS; i++{
-			if orders[i].Floor == -1{
+	if order_exists == 0 {
+		for i := 0; i < ROWS; i++ {
+			if orders[i].Floor == -1 {
 				orders[i] = button
 				Elev_set_button_lamp(button.Button_type, button.Floor, 1)
 				fmt.Println("\nA new order was added to the list...")
 				/*
-				if orders[i].Button_type == b_COMMAND{
-					move_order_infront(i)
-				}
+					if orders[i].Button_type == b_COMMAND{
+						move_order_infront(i)
+					}
 				*/
 				return
 			}
@@ -66,19 +74,19 @@ func Add_order(button Button){
 	Print_all_orders()
 }
 
-func Check_if_order_exists(button Button) int{
+func Check_if_order_exists(button Button) int {
 	exists := 0
-	for i := 0; i < ROWS; i++{
-		if orders[i].Floor == button.Floor && orders[i].Button_type == button.Button_type{
+	for i := 0; i < ROWS; i++ {
+		if orders[i].Floor == button.Floor && orders[i].Button_type == button.Button_type {
 			exists = 1
 		}
 	}
 	return exists
 }
 
-func Remove_order(current_floor int){
-	for i := 0; i < ROWS; i++{
-		if orders[i].Floor == current_floor{
+func Remove_order(current_floor int) {
+	for i := 0; i < ROWS; i++ {
+		if orders[i].Floor == current_floor {
 			Elev_set_button_lamp(orders[i].Button_type, orders[i].Floor, 0)
 			orders[i].Floor = -1
 			orders[i].Button_type = -1
@@ -87,8 +95,8 @@ func Remove_order(current_floor int){
 	}
 }
 
-func left_shift_orders(index int){
-	for i := index; i < ROWS-1; i++{
+func left_shift_orders(index int) {
+	for i := index; i < ROWS-1; i++ {
 		orders[i].Floor = orders[i+1].Floor
 		orders[i].Button_type = orders[i+1].Button_type
 	}
@@ -96,8 +104,8 @@ func left_shift_orders(index int){
 	orders[ROWS-1].Button_type = -1
 }
 
-func right_shift_orders(index int){
-	for i := index; i > 0; i--{
+func right_shift_orders(index int) {
+	for i := index; i > 0; i-- {
 		orders[i].Floor = orders[i-1].Floor
 		orders[i].Button_type = orders[i-1].Button_type
 	}
@@ -113,24 +121,29 @@ func move_order_infront(index int){
 	orders[0].Floor = temp_floor
 	orders[0].Button_type = temp_button_type
 }
-*/	
+*/
 
-func Order_handler(Button_Press_Chan chan Button){
-	for{
-	Add_order(<-Button_Press_Chan)
+func Order_handler(Button_Press_Chan chan Button) {
+	for {
+		Add_order(<-Button_Press_Chan)
 	}
 }
 
-func Print_all_orders(){
-	for i := 0; i < ROWS;i++{
+func Print_all_orders() {
+	for i := 0; i < ROWS; i++ {
 		fmt.Printf("%d,", orders[i])
 	}
 	fmt.Printf("\n\n")
 }
 
 func Orders_init() {
-	for i := 0; i < ROWS;i++{
+	for i := 0; i < ROWS; i++ {
 		orders[i].Floor = -1
 		orders[i].Button_type = -1
 	}
+}
+
+func Sync_with_external_orders(e_system Elevator_System, key int) {
+	e := e_system.elevators[key]
+	orders = e.INTERNAL_ORDERS
 }

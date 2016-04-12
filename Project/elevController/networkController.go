@@ -7,17 +7,18 @@ import(
 )
 const PORT int = 40000;//setting the portnumber. Selected a random port
 
-type elev struct {
+type Elevator_System struct {
 	self_id int
 	self_IP string
 	elevators map[int]*Elevator //elevator declared in FSM
-	external_orders [2][N_FLOORS]int
+	//elevator_orders [10]int
 	master int 
+	MasterIP string
 }
 
 //initializing of elevator
-func Initialize_elev() elev{
-	var e elev
+func Initialize_elev() Elevator_System{
+	var e Elevator_System
 	e.elevators = make(map[int]*Elevator) 
 
 
@@ -30,14 +31,27 @@ func Initialize_elev() elev{
 	e.self_id := int(addr[1].String()[12]-'0')*100 + int(addr[1].String()[13]-'0')*10 + int(addr[1].String()[14]-'0')//this will work for IP-addresses of format ###.###.###.###, but not with only for ###.###.###.##/
 	e.elevators[e.self_id]=new(Elevator)
 
-
-
 	e.set_master()
 
 
 }
 
-func Initialize_connections(){
+
+func Is_elev_master() bool{
+ 	isMaster:= false
+ 	if e.self_id==e.master
+ 		{	
+ 			isMaster=true	
+ 		}
+ 	return isMaster
+}
+
+
+func Get_Master_IP()string{
+	return e.MasterIP
+}
+
+/*func Initialize_connections(){
  	var isMaster bool =false
  	var tempIP string= e.self_IP[0:12]
  	var masterIP string ="255.255.255.255"
@@ -47,25 +61,22 @@ func Initialize_connections(){
  			isMaster=true	
  		}
  	UDP_initialize(isMaster,PORT,masterIP)
+	//don't think we're gonna need this one
 	
-	
-}
+}*/
 
-func (e *elev) Set_floor(message Message) {
+func (e *Elevator_System) Set_floor(message Message) {
 	e.elevators[message.Id].Floor = message.Current_floor_location
 }
 
-func MessageSetter(Broadcast_Message_chan chan Message,e *elev, elevat *Elevator ){
+func MessageSetter(Broadcast_Message_chan chan Message,e *Elevator_System, elevat *Elevator ){
 	
-	msg Message
+	var msg Message
 	msg.Target_floor=elevat.DESTINATION_FLOOR
 	msg.Current_floor=elevat.CURRENT_FLOOR
 	//To Lasse: Need to agree on what the Type Elevator and elev needs to include
 	msg.Id=e.self_id
- 	var tempIP string= e.self_IP[0:12]
- 	var masterIP string ="255.255.255.255"
- 	masterIP=tempIP + strconv.Itoa(e.master)
-	msg.MasterIP=masterIP
+	msg.MasterIP=MasterIP
 	//Where to set Timestamp?
 	msg.NewOrders=orders
 
@@ -91,9 +102,20 @@ func queue_editor(){
 
 }	
 
+func Message_Compiler(To_Master_Chan chan Message){
+	var message_Reiceved=make([] Message)
 
+	for {
+		message_Received <- To_Master_Chan
+	}
+	
 
-func (e *elev) Remove_elev(id int) {
+	//e :=elev_system[message_Received.Id]
+	//e.INTERNAL_ORDERS=message_Received.NewOrders
+
+}
+
+func (e *Elevator_System) Remove_elev(id int) {
 	delete(e.elevators, id)
 	fmt.Println("Elevator ", id, " removed from network")
 
@@ -112,7 +134,7 @@ func broadcast_message(msg chan Message){
 }
 
 
-func(e *elev) Set_master(){
+func(e *Elevator_System) Set_master(){
 	// checking which elevator has the highest IP to determine master 
 	max :=0
 	for i,_ :=range(e.elevators){
@@ -122,6 +144,9 @@ func(e *elev) Set_master(){
 		}
 	}
 	e.master=max
+	
+	var tempIP string= e.self_IP[0:12]
+ 	e.MasterIP=tempIP + strconv.Itoa(e.master)
 	fmt.Println("new master is", e.master)
 
 }
