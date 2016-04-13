@@ -16,11 +16,11 @@ const (
 )
 
 type Elevator struct {
-	STATE             int
-	CURRENT_FLOOR     int
-	DESTINATION_FLOOR int
-	DIRECTION         int
-	INTERNAL_ORDERS   [ROWS]Button
+	State            	int
+	CurrentFloor    	int
+	DestinationFloor 	int
+	Direction         	int
+	InternalOrders   	[10]Button
 }
 
 func FSM_setup_elevator() {
@@ -36,26 +36,26 @@ func FSM_setup_elevator() {
 }
 
 func FSM_create_elevator() Elevator {
-	e := Elevator{STATE: IDLE, CURRENT_FLOOR: Elev_get_floor_sensor_signal(), DESTINATION_FLOOR: Elev_get_floor_sensor_signal(), DIRECTION: DIRN_STOP}
+	e := Elevator{State: IDLE, CurrentFloor: Elev_get_floor_sensor_signal(), DestinationFloor: Elev_get_floor_sensor_signal(), Direction: DIRN_STOP}
 	return e
 }
 
 func FSM_Start_Driving(NewObjective Button, e *Elevator, State_Chan chan int, Motor_Direction_Chan chan int, Location_Chan chan int) {
-	if e.CURRENT_FLOOR > NewObjective.Floor {
+	if e.CurrentFloor > NewObjective.Floor {
 		Elev_set_motor_direction(-1)
 		Motor_Direction_Chan <- -1
 		fmt.Printf("\nThe elevator started driving in %d direction", -1)
 		State_Chan <- DRIVING
 		fmt.Println("\nState message sent")
 	}
-	if e.CURRENT_FLOOR < NewObjective.Floor {
+	if e.CurrentFloor < NewObjective.Floor {
 		Elev_set_motor_direction(1)
 		Motor_Direction_Chan <- 1
 		fmt.Printf("\nThe elevator started driving in %d direction", 1)
 		State_Chan <- DRIVING
 		fmt.Println("\nState message sent")
 	}
-	if e.CURRENT_FLOOR == NewObjective.Floor {
+	if e.CurrentFloor == NewObjective.Floor {
 		State_Chan <- DRIVING
 	}
 }
@@ -65,7 +65,7 @@ func FSM_objective_dealer(e *Elevator, State_Chan chan int, Destination_Chan cha
 		time.Sleep(time.Millisecond * 200)
 		nextOrder := Next_order()
 		//fmt.Println(nextOrder.Floor)
-		if e.STATE == IDLE && nextOrder.Floor != -1 {
+		if e.State == IDLE && nextOrder.Floor != -1 {
 			Objective_Chan <- nextOrder
 			Destination_Chan <- nextOrder.Floor
 			fmt.Println("\n\nA new objective was sent to the elevator")
@@ -77,16 +77,16 @@ func FSM_elevator_updater(e *Elevator, Motor_Direction_Chan chan int, Location_C
 	for {
 		select {
 		case NewDirection := <-Motor_Direction_Chan:
-			e.DIRECTION = NewDirection
+			e.Direction = NewDirection
 			fmt.Println("\nNew direction: ", NewDirection)
 		case NewFloor := <-Location_Chan:
-			e.CURRENT_FLOOR = NewFloor
+			e.CurrentFloor = NewFloor
 			fmt.Println("\nNew location: ", NewFloor)
 		case NewDestination := <-Destination_Chan:
-			e.DESTINATION_FLOOR = NewDestination
+			e.DestinationFloor = NewDestination
 			fmt.Println("\nNew destination: ", NewDestination)
 		case NewState := <-State_Chan:
-			e.STATE = NewState
+			e.State = NewState
 			fmt.Println("\nNew state: ", NewState)
 		}
 	}
@@ -127,7 +127,7 @@ func FSM_sensor_pooler(Button_Press_Chan chan Button) {
 }
 
 func FSM_should_stop_or_not(newFloorArrival int, e *Elevator, State_Chan chan int, Motor_Direction_Chan chan int, Door_Open_Req_Chan chan int) {
-	if newFloorArrival == e.DESTINATION_FLOOR && e.STATE == DRIVING {
+	if newFloorArrival == e.DestinationFloor && e.State == DRIVING {
 		Elev_set_motor_direction(0)
 		Motor_Direction_Chan <- 0
 		Door_Open_Req_Chan <- 1
@@ -146,7 +146,7 @@ func FSM_door_opener(doorReq int, e *Elevator, State_Chan chan int) {
 	Elev_set_door_open_lamp(0)
 
 	State_Chan <- IDLE
-	Remove_order(e.CURRENT_FLOOR)
+	Remove_order(e.CurrentFloor)
 }
 
 func FSM_safekill() {

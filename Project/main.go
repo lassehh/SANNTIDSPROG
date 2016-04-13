@@ -1,7 +1,7 @@
 package main
 
 import (
-	. "./elevController"
+	."./elevController"
 	"fmt"
 	"time"
 )
@@ -12,26 +12,31 @@ func main() {
 
 	/* SETS INITIAL STATE VARIABLES */
 	Orders_init()
-	e := FSM_create_elevator()
-	e_report := Initalize_elev()
+	e := 							FSM_create_elevator()
+	e_system := 					Initialize_elev_system()
 
 	/* CHANNELS FOR UPDATING THE ELEVATOR VARIABLES */
-	Button_Press_Chan := make(chan Button, 10)
-	Location_Chan := make(chan int, 1)
-	Motor_Direction_Chan := make(chan int, 1)
-	Destination_Chan := make(chan int, 1)
-	State_Chan := make(chan int, 1)
+	Button_Press_Chan := 			make(chan Button, 10)
+	Location_Chan := 				make(chan int, 1)
+	Motor_Direction_Chan :=			make(chan int, 1)
+	Destination_Chan :=				make(chan int, 1)
+	State_Chan := 					make(chan int, 1)
 
 	/* EVENT CHANNELS */
-	Objective_Chan := make(chan Button, 1)
-	Floor_Arrival_Chan := make(chan int, 1)
-	Door_Open_Req_Chan := make(chan int, 1)
+	Objective_Chan := 				make(chan Button, 1)
+	Floor_Arrival_Chan := 			make(chan int, 1)
+	Door_Open_Req_Chan := 			make(chan int, 1)
 
 	/* MESSAGE CHANNELS */
-	Rchv_message_Chan := make(chan Message)
-	Broadcast_message_Chan := make(chan Message)
-	From_master_Chan := make(chan bool)
-	To_Master_Chan := make(chan Message)
+	Rchv_message_Chan := 			make(chan Message)
+	Broadcast_message_Chan := 		make(chan Message)
+	Master_Ready_To_Send_Chan := 	make(chan bool)
+	Broadcast_Elev_System_Chan:= 	make(chan Elevator_System)
+	Rchv_Elev_System_Chan:=			make(chan Elevator_System)
+	//To_Master_Chan := 				make(chan Message,50)//50 messages should be enough
+
+	Master_Send_Timer_Chan:=		make(chan bool)
+	Master_Req_Update_Chan:=		make(chan bool)
 
 	/* STARTS ESSENTIAL PROCESSES */
 	go Order_handler(Button_Press_Chan)
@@ -43,9 +48,10 @@ func main() {
 	go FSM_elevator_updater(&e, Motor_Direction_Chan, Location_Chan, Destination_Chan, State_Chan)
 
 	/* STARTS THE NETWORK BETWEEN THE ELEVATORS AND THE MESSAGE-PASSING */
-	go MessageSetter(Broadcast_message_Chan, &e_report, &e)
-	go UDPSend(PORT, Broadcast_message_Chan, From_master_Chan)
-	go UDPListen(Is_elev_master(), PORT, Get_Master_IP(), Rchv_message_Chan, From_master_Chan)
+	go MessageSetter(Broadcast_message_Chan, &e_system, &e)
+	//go UDPSend(PORT, Broadcast_message_Chan, From_Master_Chan,Broadcast_Elev_System)
+	go UDPListen(Is_elev_master(e_system), PORT, Get_Master_IP(e_system), Rchv_message_Chan)
+
 
 	time.Sleep(time.Millisecond * 200)
 
@@ -53,10 +59,10 @@ func main() {
 	fmt.Printf("\n\n\n####################################################\n")
 	fmt.Printf("## The elevator has been succesfully initiated! #### \n")
 	fmt.Printf("####################################################\n\n")
-	fmt.Printf("STATE: %d , ", e.STATE)
-	fmt.Printf("CURRENT_FLOOR: %d , ", e.CURRENT_FLOOR)
-	fmt.Printf("DESTINATION_FLOOR: %d , ", e.DESTINATION_FLOOR)
-	fmt.Printf("DIRECTION: %d \n\n\n", e.DIRECTION)
+	fmt.Printf("STATE: %d , ", e.State)
+	fmt.Printf("CURRENT_FLOOR: %d , ", e.CurrentFloor)
+	fmt.Printf("DESTINATION_FLOOR: %d , ", e.DestinationFloor)
+	fmt.Printf("DIRECTION: %d \n\n\n", e.Direction)
 
 	Print_all_orders()
 
@@ -71,6 +77,23 @@ func main() {
 		case doorReq := <-Door_Open_Req_Chan:
 			FSM_door_opener(doorReq, &e, State_Chan)
 
+
+ 		case msgToMaster := <-To_Master_Chan:
+ 			Message_Compiler_Master(msgToMaster,&e_system)
+
+ 		case elevSystemToSlave := <- Rchv_Elev_System_Chan:
+ 			Sync_with_system(elevSystemToSlave, &e , &e_system)
+
+ 		case slaveSendUpdate := <- Master_Req_Update_Chan:
+ 			//slave send message over udp
+ 			UDPSendToMaster(PORT, Broadcast_message_Chan)
+ 			go Timer(Master_Send_Timer_Chan)
+
+ 		case masterSendUpdate:=<- Master_Send_Timer_Chan: 
+ 			Message_Compiler_Master(Rchv_message_Chan, &e_system)
+ 			UDPSendToSlave(PORT,Broadcast_Elev_System)
+ 			go Timer(Master_Req_Update_Chan)
 		}
+
 	}
 }

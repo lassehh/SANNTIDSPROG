@@ -49,7 +49,7 @@ func Next_order() Button {
 
 func Get_internal_orders(e *Elevator) {
 	for {
-		e.INTERNAL_ORDERS = orders
+		e.InternalOrders = orders
 		time.Sleep(time.Millisecond * 5)
 	}
 }
@@ -138,12 +138,13 @@ func Print_all_orders() {
 
 func Orders_init() {
 	for i := 0; i < ROWS; i++ {
-		orders[i].Floor = -1
+		orders[i].Floor = 		-1
 		orders[i].Button_type = -1
 	}
 }
 
-func Sync_with_external_orders(e_system Elevator_System, key int) {
-	e := e_system.elevators[key]
-	orders = e.INTERNAL_ORDERS
+func Sync_with_system(eSystemToSlave Elevator_System, e *Elevator, e_system *Elevator_System) {
+	e_system.elevators = 	eSystemToSlave.elevators
+	e.InternalOrders = 		eSystemToSlave.elevators[e_system.selfID].InternalOrders
+	orders = 				e.InternalOrders
 }
