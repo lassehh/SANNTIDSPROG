@@ -7,10 +7,15 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
-const PORT int = 42414 //setting the portnumber. Selected a random port
+const (
+	PINGPORT    int = 34014
+	SUPDATEPORT int = 33014
+	MUPDATEPORT int = 35014
+)
 
 type Elevator_System struct {
 	selfID    int
@@ -62,15 +67,7 @@ func Is_elev_master(e_system Elevator_System) bool {
 	return isMaster
 }
 
-func Get_Master_IP(e_system Elevator_System) string {
-	return e_system.masterIP
-}
-
-/*func Set_floor(message Message,e *Elevator_System) {
-	e.elevators[message.Id].CURRENT_FlOOR = message.Current_floor
-}*/
-
-func MessageSetter(Broadcast_Message_Chan chan Message, e_system Elevator_System, e *Elevator, Broadcast_Elev_System_Chan chan Elevator_System) {
+func MessageSetter(Broadcast_Message_Chan chan Message, e_system Elevator_System, e *Elevator) {
 	for {
 		var msg Message
 		msg.destinationFloor = e.DestinationFloor
@@ -84,14 +81,12 @@ func MessageSetter(Broadcast_Message_Chan chan Message, e_system Elevator_System
 		} else {
 			msg.master = false
 		}
-		Broadcast_Elev_System_Chan <- e_system
 		Broadcast_Message_Chan <- msg
 	}
 
 }
 
 func Message_Compiler_Master(msgFromSlave Message, e_system *Elevator_System) {
-
 	//fmt.Println("Started compiling message")
 	if msgFromSlave.timestamp == e_system.timestamp {
 		e_system.elevators[msgFromSlave.ID].InternalOrders = msgFromSlave.InternalOrders
@@ -120,11 +115,18 @@ func Set_master(e_system *Elevator_System) {
 	fmt.Println("new master is", e_system.master)
 }
 
-func Timer(Timer_Chan chan bool, n int) {
+func Int_Timer_Chan(Timer_Chan chan int, n int) {
 	timer := time.NewTimer(time.Millisecond * time.Duration(n))
 	<-timer.C
 	//fmt.Println("Timer timeout")
-	Timer_Chan <- true
+	Timer_Chan <- 1
+}
+
+func String_Timer_Chan(Timer_Chan chan string, n int) {
+	timer := time.NewTimer(time.Millisecond * time.Duration(n))
+	<-timer.C
+	//fmt.Println("Timer timeout")
+	Timer_Chan <- "1"
 }
 
 /* A Simple function to verify error */
@@ -135,7 +137,42 @@ func CheckError(err error) {
 	}
 }
 
-func UDPListen(isMaster bool, listenPort int, masterIP string, rchvChan chan Message) {
+func UDPListenForPing(listenPort int, e_system Elevator_System, From_Master_ReqSys_Chan chan int) {
+
+	/* For testing: sett addresse lik ip#255:30000*/
+	//ServerAddr, err := net.ResolveUDPAddr("udp", ":40000")
+	ServerAddr, err := net.ResolveUDPAddr("udp", ":"+strconv.Itoa(listenPort))
+	CheckError(err)
+
+	/* Now listen at selected port */
+	ServerConn, err := net.ListenUDP("udp", ServerAddr)
+	CheckError(err)
+	defer ServerConn.Close()
+
+	buffer := make([]byte, 1024)
+	trimmed_buffer := make([]byte, 1)
+	for { // what if the elevators crashes and the slave becomes the master
+		n, addr, err := ServerConn.ReadFromUDP(buffer)
+		fmt.Printf("\naddr: %d", addr.String())
+		fmt.Printf("\ne_system.masterIP: %d", e_system.masterIP)
+		if strings.Split(addr.String(), ":")[0] == e_system.masterIP {
+			fmt.Println("hei")
+			trimmed_buffer = buffer[0:n]
+			i := string(trimmed_buffer)
+			fmt.Println("i:", i, "  i == \"1\":", i == "1")
+			if i == "1" {
+				fmt.Println("Ping received ", i, " from ", addr)
+				CheckError(err)
+
+				//err = json.Unmarshal(trimmed_buffer, &received_message)
+				From_Master_ReqSys_Chan <- 1
+				time.Sleep(time.Millisecond * 2)
+			}
+		}
+	}
+}
+
+func UDPListenForUpdateMaster(listenPort int, infoRec chan Message) {
 
 	/* For testing: sett addresse lik ip#255:30000*/
 	//ServerAddr, err := net.ResolveUDPAddr("udp", ":40000")
@@ -148,46 +185,54 @@ func UDPListen(isMaster bool, listenPort int, masterIP string, rchvChan chan Mes
 	defer ServerConn.Close()
 
 	var received_message Message
-	fmt.Println("Starten to listen....")
-	fmt.Println("Is this elevator master? Answer: " + strconv.FormatBool(isMaster))
 
 	//var storageChannel := make(chan Message)
+	buffer := make([]byte, 1024)
+	trimmed_buffer := make([]byte, 1)
+	for {
+		n, addr, err := ServerConn.ReadFromUDP(buffer)
+		trimmed_buffer = buffer[0:n]
+		fmt.Println("Received ", string(buffer[0:n]), " from ", addr)
+		CheckError(err)
+
+		err = json.Unmarshal(trimmed_buffer, &received_message)
+		CheckError(err)
+
+		//storageChannel <- received_message
+		infoRec <- received_message
+		time.Sleep(time.Millisecond * 50)
+	}
+
+}
+
+func UDPListenForUpdateSlave(listenPort int, e_system Elevator_System, From_Master_NewUpdate_Chan chan Elevator_System) {
+
+	//For testing: sett addresse lik ip#255:30000
+	//ServerAddr, err := net.ResolveUDPAddr("udp", ":40000")
+	ServerAddr, err := net.ResolveUDPAddr("udp", ":"+strconv.Itoa(listenPort))
+	CheckError(err)
+
+	// Now listen at selected port
+	ServerConn, err := net.ListenUDP("udp", ServerAddr)
+	CheckError(err)
+	defer ServerConn.Close()
+
+	var received_e_system Elevator_System
 
 	buffer := make([]byte, 1024)
 	trimmed_buffer := make([]byte, 1)
-	if isMaster {
-		for {
-			n, addr, err := ServerConn.ReadFromUDP(buffer)
+
+	for { // what if the elevators crashes and the slave becomes the master
+		n, addr, err := ServerConn.ReadFromUDP(buffer)
+		if addr.String() == e_system.masterIP {
 			trimmed_buffer = buffer[0:n]
 			fmt.Println("Received ", string(buffer[0:n]), " from ", addr)
 			CheckError(err)
-
-			err = json.Unmarshal(trimmed_buffer, &received_message)
+			err = json.Unmarshal(trimmed_buffer, &received_e_system)
 			CheckError(err)
-
-			//storageChannel <- received_message
-			rchvChan <- received_message
-			time.Sleep(time.Millisecond * 50)
-		}
-	} else {
-		for { // what if the elevators crashes and the slave becomes the master
-			n, addr, err := ServerConn.ReadFromUDP(buffer)
-			if addr.String() == masterIP {
-				trimmed_buffer = buffer[0:n]
-				fmt.Println("Received ", string(buffer[0:n]), " from ", addr)
-				CheckError(err)
-
-				err = json.Unmarshal(trimmed_buffer, &received_message)
-				CheckError(err)
-
-				//storageChannel <- received_message
-				rchvChan <- received_message
-				time.Sleep(time.Second * 1)
-			}
-
+			From_Master_NewUpdate_Chan <- received_e_system
 		}
 	}
-
 }
 
 //need to include message-sending
@@ -251,8 +296,28 @@ msg.Timestamp = broadcastElevator_System.Timestamp
 
 }*/
 
-func UDPSendToSlave(transmitPort int, broadcastElevator_System_Chan chan Elevator_System) {
-	e_system := <-broadcastElevator_System_Chan
+func UDPSendReqToSlaves(transmitPort int, ping string) {
+	BroadcastAddr, err := net.ResolveUDPAddr("udp", "255.255.255.255:"+strconv.Itoa(transmitPort))
+	CheckError(err)
+
+	/* Create a connection to the server */
+	Conn, err := net.DialUDP("udp", nil, BroadcastAddr)
+	CheckError(err)
+
+	//fmt.Println("This is the master")
+	defer Conn.Close()
+
+	/* Loads the buffer with the message in json-format */
+	//buf, err := json.Marshal(ping)
+	//CheckError(err)
+
+	/* Sends the message */
+	Conn.Write([]byte(ping))
+
+}
+
+func UDPSendSysInfoToSlaves(transmitPort int, reworkedSystem Elevator_System) {
+	e_system := reworkedSystem
 	BroadcastAddr, err := net.ResolveUDPAddr("udp", "255.255.255.255:"+strconv.Itoa(transmitPort))
 	CheckError(err)
 
