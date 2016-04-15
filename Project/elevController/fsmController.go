@@ -36,7 +36,8 @@ func FSM_setup_elevator() {
 }
 
 func FSM_create_elevator() Elevator {
-	e := Elevator{State: IDLE, CurrentFloor: Elev_get_floor_sensor_signal(), DestinationFloor: Elev_get_floor_sensor_signal(), Direction: DIRN_STOP}
+	e := Elevator{State: IDLE, CurrentFloor: Elev_get_floor_sensor_signal(),
+	 	DestinationFloor: Elev_get_floor_sensor_signal(), Direction: DIRN_STOP, InternalOrders: orders}
 	return e
 }
 

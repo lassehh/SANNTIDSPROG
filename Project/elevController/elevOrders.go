@@ -11,7 +11,7 @@ import (
 
 			2
 
-	[FLOOR][BUTTON_TYPE]
+	[FLOOR][BUTTOsN_TYPE]
 	[FLOOR][BUTTON_TYPE]
 	[FLOOR][BUTTON_TYPE]
 	.						}10
@@ -46,14 +46,13 @@ var orders [ROWS]Button
 func Next_order() Button {
 	return orders[0]
 }
-
-func Get_internal_orders(e *Elevator) {
+func Get_internal_orders(e *Elevator, e_system *Elevator_System) {
 	for {
-		e.InternalOrders = orders
+		e_system.elevators[e_system.selfID].InternalOrders = orders
+		e.InternalOrders=orders
 		time.Sleep(time.Millisecond * 5)
 	}
 }
-
 func Add_order(button Button) {
 	order_exists := Check_if_order_exists(button)
 	if order_exists == 0 {
@@ -143,9 +142,27 @@ func Orders_init() {
 	}
 }
 
-func Sync_with_system(eSystemToSlave Elevator_System, e *Elevator, e_system *Elevator_System) {
-	fmt.Println("Syncing Gabriel")
-	e_system.elevators = eSystemToSlave.elevators
-	e.InternalOrders = eSystemToSlave.elevators[e_system.selfID].InternalOrders
-	orders = e.InternalOrders
+func Sync_with_system(messageToSlave Message, e *Elevator, e_system *Elevator_System) {
+	var elevExistedInMap bool=false
+	for i,_ := range e_system.elevators{
+		if i == e_system.selfID{
+			e.InternalOrders = messageToSlave.InternalOrders
+			orders = messageToSlave.InternalOrders
+		}
+		if i == messageToSlave.ID {
+			e_system.elevators[i].InternalOrders = messageToSlave.InternalOrders
+			elevExistedInMap=true
+			break
+		}
+	}
+	if elevExistedInMap==false{
+		//fmt.Println("\nTrying to create a new elevator...\n")
+		e_system.elevators[messageToSlave.ID] = new(Elevator)
+		//fmt.Println("\nCreated a new elevator...\n")
+		e_system.elevators[messageToSlave.ID].InternalOrders = messageToSlave.InternalOrders
+		//fmt.Println("\nTried to update its orders\n")
+	}
+	for i,_ := range e_system.elevators{
+		fmt.Println("THIS ELEVATOR: ", i, ", AND ITS ORDERS: ", e_system.elevators[i].InternalOrders)
+	}
 }

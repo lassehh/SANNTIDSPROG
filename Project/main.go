@@ -2,7 +2,6 @@ package main
 
 import (
 	. "./elevController"
-	"fmt"
 	"time"
 )
 
@@ -13,7 +12,7 @@ func main() {
 	/* SETS INITIAL STATE VARIABLES */
 	Orders_init()
 	e := FSM_create_elevator()
-	e_system := Initialize_elev_system()
+	e_system := Initialize_elev_system(&e)
 
 	/* CHANNELS FOR UPDATING THE ELEVATOR VARIABLES */
 	Button_Press_Chan := make(chan Button, 10)
@@ -29,7 +28,7 @@ func main() {
 	Door_Close_Req_Chan := make(chan int, 1)
 
 	/* MESSAGE CHANNELS */
-	Rchv_Message_Chan := make(chan Message, 1)
+	Rchv_Message_Chan := make(chan Message, 10)
 	Broadcast_Message_Chan := make(chan Message, 1)
 	//Master_Ready_To_Send_Chan := make(chan bool)
 	//Broadcast_Elev_System_Chan := make(chan Elevator_System, 1)
@@ -40,12 +39,13 @@ func main() {
 	Ping_Slaves_Chan := make(chan string, 1)
 	Time_Window_Timeout_Chan := make(chan int, 1)
 	//Master_Req_Update_Chan := make(chan bool, 1)
-	From_Master_NewUpdate_Chan := make(chan Elevator_System, 1)
+	From_Master_NewUpdate_Chan := make(chan Message, 10)
 	From_Master_ReqSys_Chan := make(chan int, 1)
+
 
 	/* STARTS ESSENTIAL PROCESSES */
 	go Order_handler(Button_Press_Chan)
-	go Get_internal_orders(&e)
+	go Get_internal_orders(&e, &e_system)
 	go FSM_safekill()
 	go FSM_sensor_pooler(Button_Press_Chan)
 	go FSM_floor_tracker(&e, Location_Chan, Floor_Arrival_Chan)
@@ -53,24 +53,19 @@ func main() {
 	go FSM_elevator_updater(&e, Motor_Direction_Chan, Location_Chan, Destination_Chan, State_Chan)
 
 	/* STARTS THE NETWORK BETWEEN THE ELEVATORS AND THE MESSAGE-PASSING */
-	go MessageSetter(Broadcast_Message_Chan, e_system, &e)
-	go UDPListenForPing(PINGPORT, e_system, From_Master_ReqSys_Chan)
-	go UDPListenForUpdateSlave(SUPDATEPORT, e_system, From_Master_NewUpdate_Chan)
+	go UDPListenForPing(PINGPORT, e_system, From_Master_ReqSys_Chan)// used PORT earlier
+	go UDPListenForUpdateSlave(SUPDATEPORT, &e_system, From_Master_NewUpdate_Chan)// used PORT earlier
 	if Is_elev_master(e_system) {
-		go UDPListenForUpdateMaster(MUPDATEPORT, Rchv_Message_Chan)
+		go UDPListenForUpdateMaster(MUPDATEPORT, Rchv_Message_Chan)// used PORT earlier
 		Ping_Slaves_Chan <- "1" //Initiates the master events
 	}
 
-	time.Sleep(time.Millisecond * 200)
+	// Channels to see if slaves are alive
+	
 
-	/* STARTUP TEXT */
-	fmt.Printf("\n\n\n####################################################\n")
-	fmt.Printf("## The elevator has been succesfully initiated! #### \n")
-	fmt.Printf("####################################################\n\n")
-	fmt.Printf("STATE: %d , ", e.State)
-	fmt.Printf("CURRENT_FLOOR: %d , ", e.CurrentFloor)
-	fmt.Printf("DESTINATION_FLOOR: %d , ", e.DestinationFloor)
-	fmt.Printf("DIRECTION: %d \n\n\n", e.Direction)
+
+
+	time.Sleep(time.Millisecond * 200)
 
 	Print_all_orders()
 
@@ -92,26 +87,30 @@ func main() {
 		/* NETWORK EVENTS: */
 		/* MASTER ONLY EVENTS */
 		case sendReq := <-Ping_Slaves_Chan:
-			UDPSendReqToSlaves(PINGPORT, sendReq)            //Ping slaves for them to send their system info
-			go Int_Timer_Chan(Time_Window_Timeout_Chan, 400) //Opens a time window
+			UDPSendReqToSlaves(PINGPORT, sendReq)            //Ping slaves for them to send their system info. Used PINGPORT earlier
+			go Int_Timer_Chan(Time_Window_Timeout_Chan, 50) //Opens a time window
 
 		case infoRec := <-Rchv_Message_Chan:
 			Message_Compiler_Master(infoRec, &e_system) //Gathering system info meanwhile
 
-		case timeWindowTimeout := <-Time_Window_Timeout_Chan: //Time window closes, starts processing info
-			fmt.Printf("\nNETWORK: SYSTEM INFO GATHERED, PROCESSING - %d", timeWindowTimeout)
-			UDPSendSysInfoToSlaves(SUPDATEPORT, e_system) //Start processing information gathered, then send it
+		case <-Time_Window_Timeout_Chan: //Time window closes, starts processing info
+			//fmt.Printf("\nNETWORK: SYSTEM INFO GATHERED, PROCESSING - %d\n", timeWindowTimeout)
+			UDPSendSysInfoToSlaves(SUPDATEPORT, e_system) //Start processing information gathered, then send it. Used SUPDATEPORT earlier
 			go String_Timer_Chan(Ping_Slaves_Chan, 400)   //Sends it out and waits before it opens a new time window
 
 		/* SLAVE EVENTS */
-		case sendMyInfo := <-From_Master_ReqSys_Chan:
-			fmt.Printf("\nNETWORK: SYSTEM INFO REQUEST FROM MASTER - %d", sendMyInfo)
-			UDPSendToMaster(MUPDATEPORT, Broadcast_Message_Chan)
+		case <-From_Master_ReqSys_Chan:
+			//fmt.Printf("\nNETWORK: SYSTEM INFO REQUEST FROM MASTER - %d\n", sendMyInfo)
+			MessageSetter(Broadcast_Message_Chan, e_system, &e)
+			UDPSendToMaster(MUPDATEPORT, Broadcast_Message_Chan) //Used MUPDATEPORT earlier
 
 		case newSysInfo := <-From_Master_NewUpdate_Chan:
-			fmt.Println("\nNETWORK: RECIEVED NEW SYSTEM INFO FROM MASTER")
+			//fmt.Println("\nNETWORK: RECIEVED NEW SYSTEM INFO FROM MASTER")
 			Sync_with_system(newSysInfo, &e, &e_system)
+		/*
+		case aliveReq := <- Alive_Ping_Chan:
+			UDPSendAliveMessage(blabla)
+		*/
 		}
-
 	}
 }
